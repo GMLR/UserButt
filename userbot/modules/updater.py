@@ -123,11 +123,11 @@ async def update(event, repo, ups_rem, ac_br):
     return
 
 
-@register(outgoing=True, pattern=r"^\.update(?: |$)(now|deploy)?")
+@register(outgoing=True, pattern=r"^\.update( now| deploy|$)")
 async def upstream(event):
-    """For .update command, check if the bot is up to date, update if specified"""
-    await event.edit("`Checking for updates, please wait....`")
-    conf = event.pattern_match.group(1)
+    "For .update command, check if the bot is up to date, update if specified"
+    await event.edit("`Getting information....`")
+    conf = event.pattern_match.group(1).strip()
     off_repo = UPSTREAM_REPO_URL
     force_update = False
     try:
@@ -143,8 +143,10 @@ async def upstream(event):
     except InvalidGitRepositoryError as error:
         if conf is None:
             return await event.edit(
-                f"`Unfortunately, the directory {error} does not seem to be a git repository."
-                "\nBut we can fix that by force updating the userbot using .update now.`"
+                f"`Unfortunately, the directory {error} "
+                "does not seem to be a git repository.\n"
+                "But we can fix that by force updating the userbot using "
+                ".update now.`"
             )
         repo = Repo.init()
         origin = repo.create_remote("upstream", off_repo)
@@ -173,41 +175,36 @@ async def upstream(event):
     ups_rem.fetch(ac_br)
 
     changelog = await gen_chlog(repo, f"HEAD..upstream/{ac_br}")
+    """Special case for deploy"""
+    if conf == "deploy":
+        await event.edit("`Deploying userbot, please wait....`")
+        await deploy(event, repo, ups_rem, ac_br, txt)
+        await asyncio.sleep(15)
+        await event.delete()
+        return
 
-    if changelog == "" and not force_update:
+    if changelog == "" and force_update is False:
         await event.edit(
-            f"\n`Your USERBOT is`  **up-to-date**  `with`  **{UPSTREAM_REPO_BRANCH}**\n"
+            "\n`Your USERBOT is`  **up-to-date**  `with`  "
+            f"**{UPSTREAM_REPO_BRANCH}**\n"
         )
+        await asyncio.sleep(15)
+        await event.delete()
         return repo.__del__()
 
-    if conf is None and not force_update:
-        changelog_str = (
-            f"**New UPDATE available for [{ac_br}]:\n\nCHANGELOG:**\n`{changelog}`"
-        )
-        if len(changelog_str) > 4096:
-            await event.edit("`Changelog is too big, view the file to see it.`")
-            with open("output.txt", "w+") as file:
-                file.write(changelog_str)
-            await event.client.send_file(
-                event.chat_id,
-                "output.txt",
-                reply_to=event.id,
-            )
-            remove("output.txt")
-        else:
-            await event.edit(changelog_str)
-        return await event.respond('do "`.update now` or `.update deploy`" to update')
+    if conf == "" and not force_update:
+        await print_changelogs(event, ac_br, changelog)
+        return
 
     if force_update:
         await event.edit(
             "`Force-Syncing to latest stable userbot code, please wait...`"
         )
-    else:
-        await event.edit("`Updating userbot, please wait....`")
     if conf == "now":
+        await event.edit("`Updating userbot, please wait....`")
         await update(event, repo, ups_rem, ac_br)
-    elif conf == "deploy":
-        await deploy(event, repo, ups_rem, ac_br, txt)
+        await asyncio.sleep(15)
+        await event.delete()
     return
 
 
@@ -218,6 +215,6 @@ CMD_HELP.update(
         "\n\n`.update now`"
         "\nUsage: Update your userbot, if there are any updates in your userbot repository."
         "\n\n`.update deploy`"
-        "\nUsage: Deploy your userbot at heroku, if there are any updates in your userbot repository."
+        "\nUsage: Deploy your userbot at heroku, even when no updates"
     }
 )
